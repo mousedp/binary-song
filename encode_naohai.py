@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(BASE, '外壳'))
 from 本源公式 import 本源公式, 风, 火, 雷, 电
 from 旋律编码 import 旋律编码器
 from 歌词编码 import 歌词编码器
-from 伴奏编码 import 生成传奇伴奏
+from 伴奏编码 import 生成闹海伴奏
 from 闹海旋律 import 闹海主歌片段
 from 闹海歌词 import 闹海歌词
 
@@ -48,7 +48,7 @@ def 编码闹海二进制歌曲() -> bytes:
     
     # 第三维度：伴奏（复用传奇伴奏生成逻辑）
     print("[3/5] 编码伴奏...")
-    伴奏数据 = 生成传奇伴奏()
+    伴奏数据 = 生成闹海伴奏()
     print(f"   完成: {len(伴奏数据)} 字节")
     
     # 第四维度：风火雷电
