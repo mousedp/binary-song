@@ -25,48 +25,52 @@ class 歌词编码器:
         """
         将歌词文本编码为二进制
         
-        格式：每个字符 → UTF-8字节 + 声调标记(1字节)
+        格式：纯UTF-8字节流（声调全0时省略，有非零声调时头部加0xFF标记）
         """
-        result = b''
-        for char in text:
-            # UTF-8 编码
-            utf8_bytes = char.encode('utf-8')
-            
-            # 声调检测
-            tone = 歌词编码器.TONE_MAP.get(char, 0)
-            
-            result += utf8_bytes + bytes([tone])
+        # 检查是否有非零声调
+        has_tones = any(歌词编码器.TONE_MAP.get(c, 0) != 0 for c in text)
         
+        if not has_tones:
+            # 无声调：直接UTF-8
+            return text.encode('utf-8')
+        
+        # 有声调：头部0xFF + 每字符UTF-8 + 1B声调
+        result = bytes([0xFF])
+        for char in text:
+            utf8_bytes = char.encode('utf-8')
+            tone = 歌词编码器.TONE_MAP.get(char, 0)
+            result += utf8_bytes + bytes([tone])
         return result
     
     @staticmethod
     def decode(binary_data: bytes) -> str:
         """从二进制解码歌词文本"""
-        text = ''
-        i = 0
-        while i < len(binary_data):
-            try:
-                # 找UTF-8字符边界
-                if binary_data[i] < 0x80:
-                    # ASCII
-                    char = chr(binary_data[i])
-                    i += 1
-                elif (binary_data[i] & 0xE0) == 0xC0:
-                    char = bytes(binary_data[i:i+2]).decode('utf-8')
-                    i += 2
-                elif (binary_data[i] & 0xF0) == 0xE0:
-                    char = bytes(binary_data[i:i+3]).decode('utf-8')
-                    i += 3
-                else:
-                    char = bytes(binary_data[i:i+4]).decode('utf-8')
-                    i += 4
-                
-                # 跳过声调字节
-                i += 1
-                text += char
-            except Exception:
-                break
-        return text
+        if binary_data and binary_data[0] == 0xFF:
+            # 有声调版本
+            text = ''
+            i = 1
+            while i < len(binary_data):
+                try:
+                    if binary_data[i] < 0x80:
+                        char = chr(binary_data[i])
+                        i += 1
+                    elif (binary_data[i] & 0xE0) == 0xC0:
+                        char = bytes(binary_data[i:i+2]).decode('utf-8')
+                        i += 2
+                    elif (binary_data[i] & 0xF0) == 0xE0:
+                        char = bytes(binary_data[i:i+3]).decode('utf-8')
+                        i += 3
+                    else:
+                        char = bytes(binary_data[i:i+4]).decode('utf-8')
+                        i += 4
+                    i += 1  # 跳过声调
+                    text += char
+                except Exception:
+                    break
+            return text
+        else:
+            # 纯UTF-8
+            return binary_data.decode('utf-8')
 
 
 # ====== 测试歌曲：传奇（王菲）歌词 ======

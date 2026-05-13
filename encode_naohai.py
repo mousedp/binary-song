@@ -65,12 +65,12 @@ def 编码闹海二进制歌曲() -> bytes:
     # 合成完整二进制歌曲
     print("\n[5/5] 合成完整二进制歌曲...")
     
-    完整歌曲 = b'BinarySong|||'
-    完整歌曲 += b'MELODY:' + 曲数据 + b'|||'
-    完整歌曲 += b'LYRICS:' + 歌词数据 + b'|||'
-    完整歌曲 += b'ACCOMP:' + 伴奏数据 + b'|||'
-    完整歌曲 += b'SURROUND:' + 风火雷电数据
-    完整歌曲 += b'|||END'
+    # 紧凑二进制格式：1B魔数 + 1B版本 + [1B tag + 2B len + data]...
+    # tags: 0x01=旋律 0x02=歌词 0x03=伴奏 0x04=风火雷电 0x05=人声
+    import struct
+    完整歌曲 = bytes([0xB5, 0x01])  # 魔数0xB5 + 版本1
+    for tag, data in [(0x01, 曲数据), (0x02, 歌词数据), (0x03, 伴奏数据), (0x04, 风火雷电数据)]:
+        完整歌曲 += bytes([tag]) + struct.pack('>H', len(data)) + data
     
     print(f"\n{'=' * 50}")
     print(f"二进制歌曲《闹海》编码完成！")
