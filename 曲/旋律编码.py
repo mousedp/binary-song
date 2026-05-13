@@ -53,7 +53,10 @@ class 旋律编码器:
         """
         value = NOTE_MAP.get(note, 0) | OCTAVE_SHIFT.get(octave, 0)
         dur = DURATION.get(duration, 1.0)
-        return struct.pack('Bf', value, dur)
+        # 用2字节精确编码，避免对齐padding：高5位=音符(0-7)+八度(0-2), 低字节=时值(1/2/4/8分音符)
+        dur_map = {4.0: 0, 2.0: 1, 1.0: 2, 0.5: 3, 0.25: 4}
+        dur_code = dur_map.get(dur, 2)
+        return struct.pack('BB', value, dur_code)
     
     @staticmethod
     def encode_melody(notes: list) -> bytes:
@@ -74,19 +77,20 @@ class 旋律编码器:
     @staticmethod
     def decode(binary_data: bytes) -> list:
         """从二进制解码旋律"""
+        dur_decode = {0: 4.0, 1: 2.0, 2: 1.0, 3: 0.5, 4: 0.25}
         notes = []
-        for i in range(0, len(binary_data), 5):  # 1 byte + 4 float
-            chunk = binary_data[i:i+5]
-            if len(chunk) < 5:
+        for i in range(0, len(binary_data), 2):  # 2 bytes per note
+            chunk = binary_data[i:i+2]
+            if len(chunk) < 2:
                 break
-            value, dur = struct.unpack('Bf', chunk)
+            value, dur_code = struct.unpack('BB', chunk)
             note = value & 0b00000111
             octave_raw = (value & 0b00011000) >> 3
             octave_map = {0: 'low', 1: 'mid', 2: 'high'}
             notes.append({
                 'note': note,
                 'octave': octave_map.get(octave_raw, 'mid'),
-                'duration': dur,
+                'duration': dur_decode.get(dur_code, 1.0),
             })
         return notes
 

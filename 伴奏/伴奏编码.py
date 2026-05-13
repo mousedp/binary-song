@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-伴奏维度 - 乐器音频二进制编码
-================================
-伴奏库：笛子、古筝、钢琴等
-有名歌曲才有完整伴奏库
+伴奏维度 - MIDI事件编码（非PCM波形）
+=====================================
+之前用44100Hz PCM波形，7个和弦就705KB，太蠢了。
+正确做法：存MIDI事件（音高+时长+力度），播放时再合成波形。
+一个和弦事件 = 1字节乐器 + 1字节音高 + 2字节时长(ms) + 1字节力度 = 5字节
 """
 
 import struct
@@ -23,111 +24,94 @@ class 乐器类型:
     合成器 = 0x0A
 
 
+# 音高编号（MIDI标准，C4=60）
+PITCH_MAP = {
+    'C3': 48, 'D3': 50, 'E3': 52, 'F3': 53, 'G3': 55, 'A3': 57, 'B3': 59,
+    'C4': 60, 'D4': 62, 'E4': 64, 'F4': 65, 'G4': 67, 'A4': 69, 'B4': 71,
+    'C5': 72, 'D5': 74, 'E5': 76, 'F5': 77, 'G5': 79, 'A5': 81, 'B5': 83,
+    'C6': 84,
+}
+
+
 class 伴奏编码器:
-    """伴奏二进制编码器"""
-    
+    """伴奏二进制编码器（MIDI事件模式）"""
+
     @staticmethod
-    def encode_instrument(乐器: int, 音频数据: bytes) -> bytes:
+    def encode_event(乐器: int, 音高: int, 时长ms: int, 力度: int = 80) -> bytes:
         """
-        编码单个乐器轨道
+        编码单个伴奏事件
         
-        格式：[乐器ID(1B)] + [长度(4B)] + [音频数据]
-        """
-        return struct.pack('>BI', 乐器, len(音频数据)) + 音频数据
-    
-    @staticmethod
-    def encode_accompaniment(tracks: list) -> bytes:
-        """
-        编码完整伴奏（多轨合成）
+        格式：[乐器ID(1B)] + [音高(1B)] + [时长ms(2B)] + [力度(1B)] = 5字节
         
         参数：
-            tracks: [(乐器ID, 音频数据), ...]
+            乐器: 乐器ID
+            音高: MIDI音高编号(0-127)
+            时长ms: 持续时间(毫秒)
+            力度: 力度(0-127)
+        """
+        return struct.pack('BBHb', 乐器, 音高, 时长ms, 力度)
+
+    @staticmethod
+    def encode_accompaniment(events: list) -> bytes:
+        """
+        编码完整伴奏（事件流）
+        
+        参数：
+            events: [(乐器, 音高, 时长ms, 力度), ...]
         
         返回：
-            完整伴奏二进制包
+            伴奏二进制包
         """
-        header = struct.pack('>H', len(tracks))  # 轨道数
+        header = struct.pack('>H', len(events))  # 事件数
         body = b''
-        for 乐器, 数据 in tracks:
-            body += 伴奏编码器.encode_instrument(乐器, 数据)
+        for 乐器, 音高, 时长, 力度 in events:
+            body += 伴奏编码器.encode_event(乐器, 音高, 时长, 力度)
         return header + body
-    
+
     @staticmethod
-    def generate_sine_wave(freq: float, duration: float,
-                           sample_rate: int = 44100,
-                           amplitude: float = 0.5) -> bytes:
-        """
-        生成正弦波音频数据（模拟乐器音色）
-        
-        用于测试/演示，实际使用时替换为真实音频文件
-        
-        参数：
-            freq: 频率(Hz)
-            duration: 时长(秒)
-            sample_rate: 采样率
-            amplitude: 振幅(0-1)
-        """
-        import math
-        num_samples = int(sample_rate * duration)
-        data = b''
-        for i in range(num_samples):
-            t = i / sample_rate
-            value = amplitude * math.sin(2 * math.pi * freq * t)
-            # 转为16位PCM
-            sample = int(value * 32767)
-            data += struct.pack('<h', sample)
-        return data
+    def decode(data: bytes) -> list:
+        """从二进制解码伴奏事件"""
+        count = struct.unpack('>H', data[:2])[0]
+        events = []
+        for i in range(count):
+            offset = 2 + i * 5
+            if offset + 5 > len(data):
+                break
+            乐器, 音高, 时长, 力度 = struct.unpack('BBHb', data[offset:offset+5])
+            events.append({
+                'instrument': 乐器,
+                'pitch': 音高,
+                'duration_ms': 时长,
+                'velocity': 力度,
+            })
+        return events
 
-
-# ====== 测试歌曲：传奇（王菲）伴奏 ======
-# 简化版：钢琴+弦乐
 
 def 生成传奇伴奏() -> bytes:
-    """生成传奇的简化伴奏（用于测试）"""
-    
-    # C大调音符频率 (Hz)
-    NOTES = {
-        'C4': 261.63, 'D4': 293.66, 'E4': 329.63,
-        'F4': 349.23, 'G4': 392.00, 'A4': 440.00,
-        'B4': 493.88, 'C5': 523.25,
-    }
-    
+    """生成传奇的简化伴奏（MIDI事件模式）"""
     # 主歌和弦进行（传奇片段）
     chords = [
-        ('C4', 1.0),
-        ('G4', 0.5),
-        ('A4', 0.5),
-        ('E4', 2.0),
-        ('F4', 1.0),
-        ('C4', 1.0),
-        ('D4', 2.0),
+        (乐器类型.钢琴, 'C4', 1000, 80),
+        (乐器类型.钢琴, 'G4', 500, 75),
+        (乐器类型.钢琴, 'A4', 500, 75),
+        (乐器类型.钢琴, 'E4', 2000, 85),
+        (乐器类型.钢琴, 'F4', 1000, 80),
+        (乐器类型.钢琴, 'C4', 1000, 80),
+        (乐器类型.钢琴, 'D4', 2000, 75),
     ]
-    
-    tracks = []
-    for freq_name, dur in chords:
-        freq = NOTES.get(freq_name, 440.0)
-        audio = 伴奏编码器.generate_sine_wave(
-            freq=freq,
-            duration=dur,
-            amplitude=0.3
-        )
-        tracks.append((乐器类型.钢琴, audio))
-    
-    return 伴奏编码器.encode_accompaniment(tracks)
+    events = []
+    for 乐器, 音名, 时长, 力度 in chords:
+        音高 = PITCH_MAP.get(音名, 60)
+        events.append((乐器, 音高, 时长, 力度))
+    return 伴奏编码器.encode_accompaniment(events)
 
 
 if __name__ == '__main__':
-    print("=== 伴奏维度 ===")
-    
-    # 生成传奇伴奏
+    print("=== 伴奏维度（MIDI事件模式）===")
     binary = 生成传奇伴奏()
-    print(f"传奇伴奏二进制长度: {len(binary)} 字节")
-    
-    print(f"\n支持的乐器:")
-    for name in dir(乐器类型):
-        if not name.startswith('_'):
-            val = getattr(乐器类型, name)
-            if isinstance(val, int):
-                print(f"  {name}: 0x{val:02X}")
-    
-    print("\n✅ 伴奏编码器就绪！")
+    print("传奇伴奏二进制长度: {} 字节".format(len(binary)))
+    events = 伴奏编码器.decode(binary)
+    print("事件数: {}".format(len(events)))
+    for i, e in enumerate(events):
+        print("  [{}] 乐器={} 音高={} 时长={}ms 力度={}".format(
+            i, e['instrument'], e['pitch'], e['duration_ms'], e['velocity']))
