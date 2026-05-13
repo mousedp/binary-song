@@ -111,30 +111,15 @@ class 本源公式:
     @classmethod
     def to_binary(cls, precision: int = 64) -> bytes:
         """
-        将本源公式计算结果转为原生二进制
+        将本源公式的常数转为二进制
         
-        风火雷电的采样数据就是内容本身——物理公式跑出来的结果
-        不能只存常量，否则等于把引擎拆了只留螺丝钉
-        
-        参数：
-            precision: 二进制精度（位数）
-        
-        返回：
-            原生二进制字节流
+        公式转二进制，全程二进制。存公式参数，不存采样。
+        12个希腊字母常数 × 8字节(double) + 版本号2字节
         """
-        # 计算多组采样值
-        samples = []
-        for i in range(256):
-            t = i / 256.0 * 2 * math.pi
-            val = cls.计算_F(t=t, A=1.0, B=1.0, Phi=1.0, Theta=1.0)
-            samples.append(val)
-        
-        # 转为二进制
-        binary_data = b''
-        for val in samples:
-            # 浮点数转IEEE 754双精度二进制
+        binary_data = struct.pack('>H', 1)  # 版本号
+        for val in [cls.Omega, cls.epsilon, cls.psi, cls.zeta, cls.eta,
+                    cls.sigma, cls.tau, cls.xi, cls.nu, cls.mu, cls.rho, cls.gamma]:
             binary_data += struct.pack('d', val)
-        
         return binary_data
 
 
@@ -157,8 +142,8 @@ class 风:
     
     @classmethod
     def to_binary(cls) -> bytes:
-        samples = [cls.伯努利(v) for v in range(0, 100)]
-        return b''.join(struct.pack('f', s) for s in samples)
+        # 公式参数转二进制
+        return struct.pack('ff', cls.rho_air, cls.g)
 
 
 class 火:
@@ -175,8 +160,8 @@ class 火:
     
     @classmethod
     def to_binary(cls) -> bytes:
-        samples = [cls.燃烧热(m) for m in range(0, 1000, 10)]
-        return b''.join(struct.pack('f', s) for s in samples)
+        # 公式参数转二进制
+        return struct.pack('ff', cls.delta_H, 44.097)
 
 
 class 雷:
@@ -194,9 +179,8 @@ class 雷:
     
     @classmethod
     def to_binary(cls) -> bytes:
-        import math
-        samples = [cls.电场强度(r) for r in range(1, 1000, 10)]
-        return b''.join(struct.pack('f', s) for s in samples)
+        # 公式参数转二进制
+        return struct.pack('d', cls.k_e)
 
 
 class 电:
@@ -211,8 +195,8 @@ class 电:
     
     @classmethod
     def to_binary(cls) -> bytes:
-        samples = [cls.功率(i * 0.001) for i in range(1, 10000)]
-        return b''.join(struct.pack('f', s) for s in samples)
+        # 公式参数转二进制
+        return struct.pack('f', 1000.0)  # 默认电阻R
 
 
 if __name__ == '__main__':
